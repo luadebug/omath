@@ -143,19 +143,18 @@ jobs:
           prepare: pkg install -y git curl zip unzip gmake llvm gsed bash perl5 openssl 7-zip coreutils cmake ninja
           run: |
             git config --global --add safe.directory `pwd`
-            export VCPKG_ROOT=$(pwd)/vcpkg
-            # Remove vcpkg if it exists to ensure clean state
+            # Build vcpkg in /tmp to avoid sshfs timestamp sync issues
+            # This prevents PCH timestamp mismatches during parallel builds
+            export VCPKG_ROOT=/tmp/vcpkg
             rm -rf "$VCPKG_ROOT"
             git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
             cd "$VCPKG_ROOT"
-            # Clean any existing build artifacts before bootstrapping
-            rm -rf buildtrees/_vcpkg
-            # Set environment to help with timestamp issues during build
-            export SOURCE_DATE_EPOCH=$(date +%s)
             # Bootstrap vcpkg - it will build from source on FreeBSD
-            ./bootstrap-vcpkg.sh || (rm -rf buildtrees/_vcpkg && ./bootstrap-vcpkg.sh)
+            # Building in /tmp avoids sshfs timestamp issues that break PCH
+            ./bootstrap-vcpkg.sh
             cd -
             export VCPKG_FORCE_SYSTEM_BINARIES=0
+            # VCPKG_ROOT is set to /tmp/vcpkg, which CMake will use via the preset
             cmake --preset freebsd-release-vcpkg -DOMATH_BUILD_TESTS=ON -DOMATH_BUILD_BENCHMARK=OFF -DVCPKG_MANIFEST_FEATURES="imgui;avx2;tests" -DVCPKG_INSTALL_OPTIONS="--allow-unsupported"
             cmake --build cmake-build/build/freebsd-release-vcpkg --target unit_tests omath
             ./out/Release/unit_tests
