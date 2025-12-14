@@ -127,8 +127,6 @@ jobs:
   freebsd-build-and-test:
     name: FreeBSD (Clang)
     runs-on: ubuntu-latest
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
     steps:
       - name: Checkout repository (with sub-modules)
         uses: actions/checkout@v4
@@ -145,6 +143,7 @@ jobs:
           prepare: pkg install -y git curl unzip gmake llvm gsed bash perl5 openssl 7-zip coreutils cmake ninja
           run: |
             git config --global --add safe.directory `pwd`
+            export VCPKG_ROOT=$(pwd)/vcpkg
             git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
             cd "$VCPKG_ROOT"
             ./bootstrap-vcpkg.sh
