@@ -144,9 +144,16 @@ jobs:
           run: |
             git config --global --add safe.directory `pwd`
             export VCPKG_ROOT=$(pwd)/vcpkg
+            # Remove vcpkg if it exists to ensure clean state
+            rm -rf "$VCPKG_ROOT"
             git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
             cd "$VCPKG_ROOT"
-            ./bootstrap-vcpkg.sh
+            # Clean any existing build artifacts before bootstrapping
+            rm -rf buildtrees/_vcpkg
+            # Set environment to help with timestamp issues during build
+            export SOURCE_DATE_EPOCH=$(date +%s)
+            # Bootstrap vcpkg - it will build from source on FreeBSD
+            ./bootstrap-vcpkg.sh || (rm -rf buildtrees/_vcpkg && ./bootstrap-vcpkg.sh)
             cd -
             export VCPKG_FORCE_SYSTEM_BINARIES=0
             cmake --preset freebsd-release-vcpkg -DOMATH_BUILD_TESTS=ON -DOMATH_BUILD_BENCHMARK=OFF -DVCPKG_MANIFEST_FEATURES="imgui;avx2;tests" -DVCPKG_INSTALL_OPTIONS="--allow-unsupported"
