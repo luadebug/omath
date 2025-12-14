@@ -140,7 +140,7 @@ jobs:
           sync: sshfs
           mem: 12288
           copyback: false
-          prepare: pkg install -y git curl zip unzip gmake llvm gsed bash perl5 openssl 7-zip coreutils cmake ninja pkgconf
+          prepare: pkg install -y git curl zip unzip gmake llvm gsed bash perl5 openssl 7-zip coreutils cmake ninja pkgconf patchelf
           run: |
             git config --global --add safe.directory `pwd`
             # Build vcpkg in /tmp to avoid sshfs timestamp sync issues
