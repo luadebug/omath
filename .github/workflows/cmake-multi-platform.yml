@@ -188,7 +188,12 @@ jobs:
 
       - name: Configure (cmake --preset)
         shell: bash
-        run: cmake --preset ${{ matrix.preset }} -DOMATH_BUILD_TESTS=ON -DOMATH_BUILD_BENCHMARK=OFF -DOMATH_ENABLE_COVERAGE=OFF -DVCPKG_MANIFEST_FEATURES="imgui;avx2;tests"
+        run: |
+          cmake --preset ${{ matrix.preset }} \
+            -DOMATH_BUILD_TESTS=ON \
+            -DOMATH_BUILD_BENCHMARK=OFF \
+            -DOMATH_ENABLE_COVERAGE=OFF \
+            -DVCPKG_MANIFEST_FEATURES="imgui;avx2;tests"
 
       - name: Build
         shell: bash
@@ -198,9 +203,14 @@ jobs:
         shell: bash
         run: ./out/Release/unit_tests.exe
 
-      - name: Install OpenCppCoverage with Chocolatey
+      ##########################################################################
+      # Coverage (x64-windows only)
+      ##########################################################################
+      - name: Install Coverage Tools
         if: ${{ matrix.triplet == 'x64-windows' }}
-        run: choco install opencppcoverage -y
+        run: |
+          choco install opencppcoverage -y
+          dotnet tool install -g dotnet-reportgenerator-globaltool
 
       - name: Build Debug for Coverage
         if: ${{ matrix.triplet == 'x64-windows' }}
@@ -220,12 +230,42 @@ jobs:
         run: |
           $env:Path = "C:\Program Files\OpenCppCoverage;$env:Path"
           cmake --build cmake-build/build/${{ matrix.preset }} --target coverage --config Debug
-        
-      - name: Upload Coverage
+
+      - name: Convert Cobertura to LCOV
+        if: ${{ matrix.triplet == 'x64-windows' }}
+        shell: pwsh
+        run: |
+          reportgenerator `
+            -reports:cmake-build/build/${{ matrix.preset }}/coverage.xml `
+            -targetdir:cmake-build/build/${{ matrix.preset }}/coverage-lcov `
+            -reporttypes:lcov
+
+      - name: Generate HTML with genhtml (optional)
+        if: ${{ matrix.triplet == 'x64-windows' }}
+        shell: bash
+        run: |
+          choco install lcov -y
+          export PATH="/c/ProgramData/chocolatey/lib/lcov/tools/bin:$PATH"
+          
+          genhtml cmake-build/build/${{ matrix.preset }}/coverage-lcov/lcov.info \
+            --output-directory cmake-build/build/${{ matrix.preset }}/coverage-html \
+            --title "OMath Coverage" \
+            --legend \
+            --branch-coverage \
+            || echo "genhtml failed, using ReportGenerator HTML instead"
+
+      - name: Upload Coverage (LCOV)
         if: ${{ matrix.triplet == 'x64-windows' }}
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report-windows
+          name: coverage-lcov-windows
+          path: cmake-build/build/${{ matrix.preset }}/coverage-lcov/
+
+      - name: Upload Coverage (HTML)
+        if: ${{ matrix.triplet == 'x64-windows' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-windows
           path: cmake-build/build/${{ matrix.preset }}/coverage/
 
       - name: Upload logs on failure
