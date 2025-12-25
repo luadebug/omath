@@ -297,7 +297,7 @@ jobs:
             }
           }
 
-##########################################################################
+      ##########################################################################
       # 1. Convert Cobertura XML -> LCOV Info (Bridge Step)
       ##########################################################################
       - name: Convert to LCOV Format
@@ -307,13 +307,18 @@ jobs:
           $env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
           $outputDir = "cmake-build/build/${{ matrix.preset }}"
           
-          # Generate ONLY lcov.info (removed Html from reporttypes)
+          # -filefilters logic:
+          #   - matches exclude
+          #   + matches include (default is include all)
+          #   We exclude paths containing '\vcpkg_installed\' and '\tests\'
+          
           reportgenerator `
             "-reports:$outputDir\coverage.cobertura.xml" `
             "-targetdir:$outputDir" `
             "-reporttypes:lcov" `
             "-title:OMath Coverage Report" `
-            "-sourcedirs:${{ github.workspace }}"
+            "-sourcedirs:${{ github.workspace }}" `
+            "-filefilters:-*\vcpkg_installed\*;-\tests\*"
           
           if (Test-Path "$outputDir\lcov.info") {
             Write-Host "✅ LCOV info file created successfully"
