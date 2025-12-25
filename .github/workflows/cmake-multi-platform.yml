@@ -145,9 +145,9 @@ jobs:
             cmake-build/build/${{ matrix.preset }}/**/*.log
             ${{ env.VCPKG_ROOT }}/buildtrees/**/*.log
 
-  ##############################################################################
-  # 2)  Windows  –  MSVC / Ninja
-  ##############################################################################
+##############################################################################
+# 2)  Windows  –  MSVC / Ninja
+##############################################################################
   windows-build-and-test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
@@ -225,7 +225,7 @@ jobs:
             -DVCPKG_MANIFEST_FEATURES="imgui;avx2;tests"
           cmake --build cmake-build/build/${{ matrix.preset }} --config Debug --target unit_tests omath
 
-      - name: Run OpenCppCoverage (Cobertura XML only)
+      - name: Run OpenCppCoverage
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: pwsh
         run: |
@@ -242,10 +242,8 @@ jobs:
             "-targetdir:cmake-build/build/${{ matrix.preset }}/coverage-lcov" `
             "-reporttypes:lcov"
           
-          # Verify the file was created
           if (Test-Path "cmake-build/build/${{ matrix.preset }}/coverage-lcov/lcov.info") {
-            Write-Host "LCOV file created successfully"
-            Get-Content "cmake-build/build/${{ matrix.preset }}/coverage-lcov/lcov.info" | Select-Object -First 20
+            Write-Host "✅ LCOV file created successfully"
           } else {
             Write-Error "LCOV file was not created"
             exit 1
@@ -253,54 +251,57 @@ jobs:
 
       - name: Generate HTML with genhtml
         if: ${{ matrix.triplet == 'x64-windows' }}
-        shell: pwsh
+        shell: bash
         run: |
-          # Find genhtml and get its full path
-          $genhtmlCmd = Get-Command genhtml -ErrorAction SilentlyContinue
+          PRESET="${{ matrix.preset }}"
+          LCOV_DIR="cmake-build/build/${PRESET}/coverage-lcov"
+          HTML_DIR="cmake-build/build/${PRESET}/coverage-html"
           
-          if ($genhtmlCmd) {
-            $genhtmlPath = $genhtmlCmd.Source
-            Write-Host "Found genhtml at: $genhtmlPath"
-          } else {
-            # Try common locations
-            $locations = @(
-              "C:\ProgramData\chocolatey\lib\lcov\tools\bin\genhtml",
-              "C:\ProgramData\chocolatey\bin\genhtml",
-              "C:\tools\lcov\bin\genhtml"
-            )
-            foreach ($loc in $locations) {
-              if (Test-Path $loc) {
-                $genhtmlPath = $loc
-                Write-Host "Found genhtml at: $genhtmlPath"
-                break
-              }
-            }
-          }
+          # Fix paths in lcov.info (convert backslashes to forward slashes)
+          echo "Fixing paths in lcov.info..."
+          sed -i 's|\\|/|g' "${LCOV_DIR}/lcov.info"
           
-          if (-not $genhtmlPath -or -not (Test-Path $genhtmlPath)) {
-            Write-Error "genhtml not found"
+          echo "=== Fixed LCOV file preview ==="
+          head -20 "${LCOV_DIR}/lcov.info"
+          
+          # Find genhtml
+          GENHTML=""
+          for path in \
+            "/c/ProgramData/chocolatey/lib/lcov/tools/bin/genhtml" \
+            "/c/ProgramData/chocolatey/bin/genhtml"; do
+            if [ -f "$path" ]; then
+              GENHTML="$path"
+              break
+            fi
+          done
+          
+          if [ -z "$GENHTML" ]; then
+            echo "Error: genhtml not found"
             exit 1
-          }
+          fi
+          
+          echo "Using genhtml at: $GENHTML"
           
           # Create output directory
-          New-Item -ItemType Directory -Force -Path "cmake-build/build/${{ matrix.preset }}/coverage-html"
+          mkdir -p "$HTML_DIR"
           
-          # Run genhtml with full path
-          & perl $genhtmlPath `
-            "cmake-build/build/${{ matrix.preset }}/coverage-lcov/lcov.info" `
-            --output-directory "cmake-build/build/${{ matrix.preset }}/coverage-html" `
-            --title "OMath Coverage Report" `
-            --legend `
-            --show-details `
-            --branch-coverage
+          # Run genhtml
+          perl "$GENHTML" \
+            "${LCOV_DIR}/lcov.info" \
+            --output-directory "$HTML_DIR" \
+            --title "OMath Coverage Report" \
+            --legend \
+            --show-details \
+            --branch-coverage \
+            --ignore-errors source
           
-          # Verify output
-          if (Test-Path "cmake-build/build/${{ matrix.preset }}/coverage-html/index.html") {
-            Write-Host "HTML report generated successfully"
-          } else {
-            Write-Error "HTML report was not generated"
+          if [ -f "${HTML_DIR}/index.html" ]; then
+            echo "✅ HTML report generated successfully"
+            ls -la "$HTML_DIR"
+          else
+            echo "❌ HTML report was not generated"
             exit 1
-          }
+          fi
 
       - name: Upload Coverage (LCOV)
         if: ${{ matrix.triplet == 'x64-windows' }}
