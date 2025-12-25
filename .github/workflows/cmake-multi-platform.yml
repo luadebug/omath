@@ -297,89 +297,88 @@ jobs:
             }
           }
 
-      - name: Convert to LCOV and Generate HTML
+##########################################################################
+      # 1. Convert Cobertura XML -> LCOV Info (Bridge Step)
+      ##########################################################################
+      - name: Convert to LCOV Format
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: pwsh
         run: |
           $env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
           $outputDir = "cmake-build/build/${{ matrix.preset }}"
           
-          # Generate LCOV and HTML using ReportGenerator
+          # Generate ONLY lcov.info (removed Html from reporttypes)
           reportgenerator `
             "-reports:$outputDir\coverage.cobertura.xml" `
-            "-targetdir:$outputDir\coverage-html" `
-            "-reporttypes:Html;lcov" `
+            "-targetdir:$outputDir" `
+            "-reporttypes:lcov" `
             "-title:OMath Coverage Report" `
             "-sourcedirs:${{ github.workspace }}"
           
-          # Copy lcov.info to separate directory
-          New-Item -ItemType Directory -Force -Path "$outputDir\coverage-lcov"
-          if (Test-Path "$outputDir\coverage-html\lcov.info") {
-            Copy-Item "$outputDir\coverage-html\lcov.info" "$outputDir\coverage-lcov\lcov.info"
-            Write-Host "✅ LCOV file created successfully"
-          }
-          
-          if (Test-Path "$outputDir\coverage-html\index.html") {
-            Write-Host "✅ HTML report generated successfully"
+          if (Test-Path "$outputDir\lcov.info") {
+            Write-Host "✅ LCOV info file created successfully"
           } else {
-            Write-Error "HTML report was not generated"
+            Write-Error "LCOV info file was not created"
             exit 1
           }
 
-      - name: Generate HTML with genhtml (optional, for consistent styling)
+      ##########################################################################
+      # 2. Generate LCOV HTML (genhtml)
+      ##########################################################################
+      - name: Generate HTML Report (genhtml)
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: bash
-        continue-on-error: true
         run: |
           PRESET="${{ matrix.preset }}"
-          LCOV_DIR="cmake-build/build/${PRESET}/coverage-lcov"
-          HTML_DIR="cmake-build/build/${PRESET}/coverage-genhtml"
+          BUILD_DIR="cmake-build/build/${PRESET}"
+          LCOV_INFO="${BUILD_DIR}/lcov.info"
+          HTML_DIR="${BUILD_DIR}/coverage-html"
           
-          if [ ! -f "${LCOV_DIR}/lcov.info" ]; then
-            echo "LCOV file not found, skipping genhtml"
-            exit 0
+          if [ ! -f "${LCOV_INFO}" ]; then
+            echo "Error: lcov.info not found at ${LCOV_INFO}"
+            exit 1
           fi
           
-          # Fix paths in lcov.info (convert backslashes to forward slashes)
-          echo "Fixing paths in lcov.info..."
-          sed -i 's|\\|/|g' "${LCOV_DIR}/lcov.info"
+          # IMPORTANT: Fix Windows paths. genhtml (Perl) hates backslashes.
+          echo "Sanitizing paths in lcov.info..."
+          sed -i 's|\\|/|g' "${LCOV_INFO}"
           
-          # Find genhtml
-          GENHTML=""
-          for path in \
-            "/c/ProgramData/chocolatey/lib/lcov/tools/bin/genhtml" \
-            "/c/ProgramData/chocolatey/bin/genhtml"; do
-            if [ -f "$path" ]; then
-              GENHTML="$path"
-              break
-            fi
-          done
+          # Locate genhtml provided by 'choco install lcov'
+          # It is typically in ProgramData/chocolatey/lib/lcov/tools/bin
+          GENHTML=$(find /c/ProgramData/chocolatey -name genhtml -print -quit)
           
           if [ -z "$GENHTML" ]; then
-            echo "genhtml not found, skipping"
-            exit 0
+            echo "Error: genhtml executable not found"
+            exit 1
           fi
           
-          echo "Using genhtml at: $GENHTML"
+          echo "Using genhtml: $GENHTML"
           mkdir -p "$HTML_DIR"
           
+          # Run genhtml
+          # Added --demangle-cpp if your version supports it, otherwise remove it
           perl "$GENHTML" \
-            "${LCOV_DIR}/lcov.info" \
+            "${LCOV_INFO}" \
             --output-directory "$HTML_DIR" \
             --title "OMath Coverage Report" \
             --legend \
             --show-details \
             --branch-coverage \
-            --ignore-errors source || echo "genhtml failed, using ReportGenerator HTML instead"
+            --ignore-errors source
+            
+          echo "✅ LCOV HTML report generated at $HTML_DIR"
 
-      - name: Upload Coverage (LCOV)
+      ##########################################################################
+      # 3. Upload Artifacts
+      ##########################################################################
+      - name: Upload Coverage (LCOV Info)
         if: ${{ matrix.triplet == 'x64-windows' }}
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-lcov-windows
-          path: cmake-build/build/${{ matrix.preset }}/coverage-lcov/
+          name: coverage-info-windows
+          path: cmake-build/build/${{ matrix.preset }}/lcov.info
 
-      - name: Upload Coverage (HTML)
+      - name: Upload Coverage (HTML Report)
         if: ${{ matrix.triplet == 'x64-windows' }}
         uses: actions/upload-artifact@v4
         with:
