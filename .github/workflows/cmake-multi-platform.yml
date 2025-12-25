@@ -209,7 +209,6 @@ jobs:
       - name: Install Coverage Tools
         if: ${{ matrix.triplet == 'x64-windows' }}
         run: |
-          choco install opencppcoverage -y
           choco install lcov -y
           dotnet tool install -g dotnet-reportgenerator-globaltool
 
@@ -225,44 +224,125 @@ jobs:
             -DVCPKG_MANIFEST_FEATURES="imgui;avx2;tests"
           cmake --build cmake-build/build/${{ matrix.preset }} --config Debug --target unit_tests omath
 
-      - name: Run OpenCppCoverage
+      - name: Find VS Code Coverage Tool
+        if: ${{ matrix.triplet == 'x64-windows' }}
+        id: find-coverage-tool
+        shell: pwsh
+        run: |
+          # Search for Microsoft.CodeCoverage.Console.exe in Visual Studio installation
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -latest -property installationPath
+          
+          Write-Host "Visual Studio path: $vsPath"
+          
+          # Find the Code Coverage Console tool
+          $coverageTool = Get-ChildItem -Path $vsPath -Recurse -Filter "Microsoft.CodeCoverage.Console.exe" -ErrorAction SilentlyContinue | 
+            Select-Object -First 1
+          
+          if ($coverageTool) {
+            Write-Host "Found Code Coverage tool: $($coverageTool.FullName)"
+            echo "COVERAGE_TOOL=$($coverageTool.FullName)" >> $env:GITHUB_OUTPUT
+          } else {
+            # Alternative: Try to find in the Extensions folder
+            $altPath = Get-ChildItem -Path "$vsPath\Common7\IDE\Extensions" -Recurse -Filter "Microsoft.CodeCoverage.Console.exe" -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            
+            if ($altPath) {
+              Write-Host "Found Code Coverage tool (alt): $($altPath.FullName)"
+              echo "COVERAGE_TOOL=$($altPath.FullName)" >> $env:GITHUB_OUTPUT
+            } else {
+              Write-Error "Microsoft.CodeCoverage.Console.exe not found"
+              exit 1
+            }
+          }
+
+      - name: Collect Coverage with VS Code Coverage
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: pwsh
         run: |
-          $env:Path = "C:\Program Files\OpenCppCoverage;$env:Path"
-          cmake --build cmake-build/build/${{ matrix.preset }} --target coverage --config Debug
+          $coverageTool = "${{ steps.find-coverage-tool.outputs.COVERAGE_TOOL }}"
+          $outputDir = "cmake-build/build/${{ matrix.preset }}"
+          
+          # Create output directory
+          New-Item -ItemType Directory -Force -Path $outputDir
+          
+          Write-Host "Running Code Coverage tool..."
+          Write-Host "Tool: $coverageTool"
+          Write-Host "Test executable: .\out\Debug\unit_tests.exe"
+          
+          # Run coverage collection
+          & $coverageTool collect `
+            --output "$outputDir\coverage.cobertura.xml" `
+            --output-format cobertura `
+            --settings "${{ github.workspace }}\.runsettings" `
+            -- ".\out\Debug\unit_tests.exe"
+          
+          # Check if coverage file was created
+          if (Test-Path "$outputDir\coverage.cobertura.xml") {
+            Write-Host "✅ Coverage XML created successfully"
+            Get-Item "$outputDir\coverage.cobertura.xml" | Select-Object Name, Length
+          } else {
+            # Try alternative approach without settings file
+            Write-Host "Retrying without settings file..."
+            & $coverageTool collect `
+              --output "$outputDir\coverage.cobertura.xml" `
+              --output-format cobertura `
+              -- ".\out\Debug\unit_tests.exe"
+            
+            if (Test-Path "$outputDir\coverage.cobertura.xml") {
+              Write-Host "✅ Coverage XML created successfully (retry)"
+            } else {
+              Write-Error "Coverage XML was not created"
+              exit 1
+            }
+          }
 
-      - name: Convert Cobertura to LCOV
+      - name: Convert to LCOV and Generate HTML
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: pwsh
         run: |
           $env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
-          reportgenerator `
-            "-reports:cmake-build/build/${{ matrix.preset }}/coverage.xml" `
-            "-targetdir:cmake-build/build/${{ matrix.preset }}/coverage-lcov" `
-            "-reporttypes:lcov"
+          $outputDir = "cmake-build/build/${{ matrix.preset }}"
           
-          if (Test-Path "cmake-build/build/${{ matrix.preset }}/coverage-lcov/lcov.info") {
+          # Generate LCOV and HTML using ReportGenerator
+          reportgenerator `
+            "-reports:$outputDir\coverage.cobertura.xml" `
+            "-targetdir:$outputDir\coverage-html" `
+            "-reporttypes:Html;lcov" `
+            "-title:OMath Coverage Report" `
+            "-sourcedirs:${{ github.workspace }}"
+          
+          # Copy lcov.info to separate directory
+          New-Item -ItemType Directory -Force -Path "$outputDir\coverage-lcov"
+          if (Test-Path "$outputDir\coverage-html\lcov.info") {
+            Copy-Item "$outputDir\coverage-html\lcov.info" "$outputDir\coverage-lcov\lcov.info"
             Write-Host "✅ LCOV file created successfully"
+          }
+          
+          if (Test-Path "$outputDir\coverage-html\index.html") {
+            Write-Host "✅ HTML report generated successfully"
           } else {
-            Write-Error "LCOV file was not created"
+            Write-Error "HTML report was not generated"
             exit 1
           }
 
-      - name: Generate HTML with genhtml
+      - name: Generate HTML with genhtml (optional, for consistent styling)
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: bash
+        continue-on-error: true
         run: |
           PRESET="${{ matrix.preset }}"
           LCOV_DIR="cmake-build/build/${PRESET}/coverage-lcov"
-          HTML_DIR="cmake-build/build/${PRESET}/coverage-html"
+          HTML_DIR="cmake-build/build/${PRESET}/coverage-genhtml"
+          
+          if [ ! -f "${LCOV_DIR}/lcov.info" ]; then
+            echo "LCOV file not found, skipping genhtml"
+            exit 0
+          fi
           
           # Fix paths in lcov.info (convert backslashes to forward slashes)
           echo "Fixing paths in lcov.info..."
           sed -i 's|\\|/|g' "${LCOV_DIR}/lcov.info"
-          
-          echo "=== Fixed LCOV file preview ==="
-          head -20 "${LCOV_DIR}/lcov.info"
           
           # Find genhtml
           GENHTML=""
@@ -276,16 +356,13 @@ jobs:
           done
           
           if [ -z "$GENHTML" ]; then
-            echo "Error: genhtml not found"
-            exit 1
+            echo "genhtml not found, skipping"
+            exit 0
           fi
           
           echo "Using genhtml at: $GENHTML"
-          
-          # Create output directory
           mkdir -p "$HTML_DIR"
           
-          # Run genhtml
           perl "$GENHTML" \
             "${LCOV_DIR}/lcov.info" \
             --output-directory "$HTML_DIR" \
@@ -293,15 +370,7 @@ jobs:
             --legend \
             --show-details \
             --branch-coverage \
-            --ignore-errors source
-          
-          if [ -f "${HTML_DIR}/index.html" ]; then
-            echo "✅ HTML report generated successfully"
-            ls -la "$HTML_DIR"
-          else
-            echo "❌ HTML report was not generated"
-            exit 1
-          fi
+            --ignore-errors source || echo "genhtml failed, using ReportGenerator HTML instead"
 
       - name: Upload Coverage (LCOV)
         if: ${{ matrix.triplet == 'x64-windows' }}
