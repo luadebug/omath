@@ -255,38 +255,38 @@ jobs:
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: pwsh
         run: |
-          # Add Perl and lcov to PATH
-          $env:Path = "C:\Strawberry\perl\bin;C:\ProgramData\chocolatey\lib\lcov\tools\bin;$env:Path"
+          # Find genhtml and get its full path
+          $genhtmlCmd = Get-Command genhtml -ErrorAction SilentlyContinue
           
-          # Find genhtml
-          $genhtml = Get-Command genhtml -ErrorAction SilentlyContinue
-          if (-not $genhtml) {
+          if ($genhtmlCmd) {
+            $genhtmlPath = $genhtmlCmd.Source
+            Write-Host "Found genhtml at: $genhtmlPath"
+          } else {
             # Try common locations
             $locations = @(
               "C:\ProgramData\chocolatey\lib\lcov\tools\bin\genhtml",
-              "C:\tools\lcov\bin\genhtml",
-              "C:\Strawberry\perl\bin\genhtml"
+              "C:\ProgramData\chocolatey\bin\genhtml",
+              "C:\tools\lcov\bin\genhtml"
             )
             foreach ($loc in $locations) {
               if (Test-Path $loc) {
-                $genhtml = $loc
+                $genhtmlPath = $loc
+                Write-Host "Found genhtml at: $genhtmlPath"
                 break
               }
             }
           }
           
-          if (-not $genhtml) {
+          if (-not $genhtmlPath -or -not (Test-Path $genhtmlPath)) {
             Write-Error "genhtml not found"
             exit 1
           }
           
-          Write-Host "Using genhtml: $genhtml"
-          
           # Create output directory
           New-Item -ItemType Directory -Force -Path "cmake-build/build/${{ matrix.preset }}/coverage-html"
           
-          # Run genhtml
-          perl $genhtml `
+          # Run genhtml with full path
+          & perl $genhtmlPath `
             "cmake-build/build/${{ matrix.preset }}/coverage-lcov/lcov.info" `
             --output-directory "cmake-build/build/${{ matrix.preset }}/coverage-html" `
             --title "OMath Coverage Report" `
