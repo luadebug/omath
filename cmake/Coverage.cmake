@@ -31,15 +31,30 @@ function(omath_setup_coverage TARGET_NAME)
     elseif(MSVC)
         # MSVC requires debug info for coverage
         target_compile_options(${TARGET_NAME} PRIVATE
-            /Zi      # Debug information
-            /Od      # Disable optimization
-            /Ob0     # Disable inlining
-            /PROFILE # Enable profiling (for VS coverage)
+            /Zi          # Debug information
+            /Od          # Disable optimization
+            /Ob0         # Disable inlining
+            /PROFILE     # Enable profiling (for VS coverage)
+            /guard:cf    # Enable control flow guard (helps with branch coverage)
+            /JMC         # Just My Code debugging (improves coverage data)
         )
         target_link_options(${TARGET_NAME} PRIVATE
             /DEBUG:FULL
             /INCREMENTAL:NO
             /PROFILE
+        )
+        
+        # Add source-level debug info
+        if(MSVC_VERSION GREATER_EQUAL 1920)
+            target_compile_options(${TARGET_NAME} PRIVATE
+                /debug:fastlink
+                /ZH:SHA_256
+            )
+        endif()
+        
+        # Ensure debug symbols are generated
+        set_target_properties(${TARGET_NAME} PROPERTIES
+            VS_DEBUGGER_ENVIRONMENT "COR_ENABLE_PROFILING=1"
         )
     endif()
 
