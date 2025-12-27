@@ -6,7 +6,19 @@ function(omath_setup_coverage TARGET_NAME)
         return()
     endif()
 
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND MSVC)
+        target_compile_options(${TARGET_NAME} PRIVATE
+            /clang:-fprofile-instr-generate
+            /clang:-fcoverage-mapping
+            /Zi
+        )
+        target_link_options(${TARGET_NAME} PRIVATE
+            /clang:-fprofile-instr-generate
+            /DEBUG:FULL
+            /INCREMENTAL:NO
+            /PROFILE
+        )
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
         target_compile_options(${TARGET_NAME} PRIVATE
             -fprofile-instr-generate
             -fcoverage-mapping
@@ -27,50 +39,14 @@ function(omath_setup_coverage TARGET_NAME)
         target_link_options(${TARGET_NAME} PRIVATE
             --coverage
         )
-
-    elseif(MSVC)
-        # MSVC requires debug info for coverage
-        target_compile_options(${TARGET_NAME} PRIVATE
-            /clang:-fprofile-instr-generate
-            /clang:-fcoverage-mapping
-            /Zi          # Debug information
-            /Od          # Disable optimization
-            /Ob0         # Disable inlining
-            /PROFILE     # Enable profiling (for VS coverage)
-            /guard:cf    # Enable control flow guard (helps with branch coverage)
-            /JMC         # Just My Code debugging (improves coverage data)
-        )
-        target_link_options(${TARGET_NAME} PRIVATE
-            /clang:-fprofile-instr-generate
-            /DEBUG:FULL
-            /INCREMENTAL:NO
-            /PROFILE
-        )
-        
-        # Add source-level debug info
-        if(MSVC_VERSION GREATER_EQUAL 1920)
-            target_compile_options(${TARGET_NAME} PRIVATE
-                /debug:fastlink
-                /ZH:SHA_256
-            )
-        endif()
-        
-        # Ensure debug symbols are generated
-        set_target_properties(${TARGET_NAME} PROPERTIES
-            VS_DEBUGGER_ENVIRONMENT "COR_ENABLE_PROFILING=1"
-        )
     endif()
 
-    # Create coverage target only once
     if(TARGET coverage)
         return()
     endif()
 
-    if(MSVC)
-        # Windows: VS Code Coverage (no custom target needed - run from CI)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND MSVC)
         message(STATUS "MSVC detected: Use VS Code Coverage from CI workflow")
-        
-        # Create a simple target that just runs the tests
         add_custom_target(coverage
             DEPENDS unit_tests
             COMMAND $<TARGET_FILE:unit_tests>
