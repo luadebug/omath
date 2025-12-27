@@ -8,11 +8,13 @@ function(omath_setup_coverage TARGET_NAME)
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE
-            /-fprofile-instr-generate
-            /-fcoverage-mapping
+            -fprofile-instr-generate
+            -fcoverage-mapping
             /Zi
         )
         target_link_options(${TARGET_NAME} PRIVATE
+            -fprofile-instr-generate
+            -fcoverage-mapping
             /DEBUG:FULL
             /INCREMENTAL:NO
             /PROFILE
@@ -23,6 +25,10 @@ function(omath_setup_coverage TARGET_NAME)
             -fcoverage-mapping
             -g
             -O0
+        )
+        target_link_options(${TARGET_NAME} PRIVATE
+            -fprofile-instr-generate
+            -fcoverage-mapping
         )
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         target_compile_options(${TARGET_NAME} PRIVATE
