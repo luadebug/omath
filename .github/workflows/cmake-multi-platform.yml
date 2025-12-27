@@ -211,6 +211,16 @@ jobs:
         run: |
           choco install llvm -y
 
+      - name: Clean Build Directory for Coverage
+        if: ${{ matrix.triplet == 'x64-windows' }}
+        shell: pwsh
+        run: |
+          $buildDir = "cmake-build/build/${{ matrix.preset }}"
+          if (Test-Path $buildDir) {
+            Write-Host "Cleaning build directory to prevent compiler conflict: $buildDir"
+            Remove-Item -Path $buildDir -Recurse -Force
+          }
+
       - name: Build Debug for Coverage
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: bash
