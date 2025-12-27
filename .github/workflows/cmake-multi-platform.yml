@@ -206,17 +206,19 @@ jobs:
       ##########################################################################
       # Coverage (x64-windows only)
       ##########################################################################
-      - name: Install Coverage Tools
+      - name: Install LLVM
         if: ${{ matrix.triplet == 'x64-windows' }}
         run: |
-          choco install lcov -y
-          dotnet tool install -g dotnet-reportgenerator-globaltool
+          choco install llvm -y
 
       - name: Build Debug for Coverage
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: bash
         run: |
           cmake --preset ${{ matrix.preset }} \
+            -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" \
+            -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" \
+            -DCMAKE_LINKER="C:/Program Files/LLVM/bin/lld-link.exe" \
             -DOMATH_BUILD_TESTS=ON \
             -DOMATH_BUILD_BENCHMARK=OFF \
             -DOMATH_ENABLE_COVERAGE=ON \
@@ -224,128 +226,54 @@ jobs:
             -DVCPKG_MANIFEST_FEATURES="imgui;avx2;tests"
           cmake --build cmake-build/build/${{ matrix.preset }} --config Debug --target unit_tests omath
 
-      - name: Find VS Code Coverage Tool
+      - name: Run Tests (Generates .profraw)
         if: ${{ matrix.triplet == 'x64-windows' }}
-        id: find-coverage-tool
         shell: pwsh
+        env:
+          LLVM_PROFILE_FILE: "cmake-build/build/${{ matrix.preset }}/unit_tests.profraw"
         run: |
-          # Search for Microsoft.CodeCoverage.Console.exe in Visual Studio installation
-          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
-            -latest -property installationPath
-          
-          Write-Host "Visual Studio path: $vsPath"
-          
-          # Find the Code Coverage Console tool
-          $coverageTool = Get-ChildItem -Path $vsPath -Recurse -Filter "Microsoft.CodeCoverage.Console.exe" -ErrorAction SilentlyContinue | 
-            Select-Object -First 1
-          
-          if ($coverageTool) {
-            Write-Host "Found Code Coverage tool: $($coverageTool.FullName)"
-            echo "COVERAGE_TOOL=$($coverageTool.FullName)" >> $env:GITHUB_OUTPUT
-          } else {
-            # Alternative: Try to find in the Extensions folder
-            $altPath = Get-ChildItem -Path "$vsPath\Common7\IDE\Extensions" -Recurse -Filter "Microsoft.CodeCoverage.Console.exe" -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-            
-            if ($altPath) {
-              Write-Host "Found Code Coverage tool (alt): $($altPath.FullName)"
-              echo "COVERAGE_TOOL=$($altPath.FullName)" >> $env:GITHUB_OUTPUT
-            } else {
-              Write-Error "Microsoft.CodeCoverage.Console.exe not found"
-              exit 1
-            }
-          }
+          ./out/Debug/unit_tests.exe
 
-      - name: Collect Coverage with VS Code Coverage
+      - name: Process Coverage (llvm-profdata & llvm-cov)
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: pwsh
         run: |
-          $coverageTool = "${{ steps.find-coverage-tool.outputs.COVERAGE_TOOL }}"
-          $outputDir = "cmake-build/build/${{ matrix.preset }}"
+          $BUILD_DIR = "cmake-build/build/${{ matrix.preset }}"
+          $EXE_PATH = "./out/Debug/unit_tests.exe"
           
-          # Create output directory
-          New-Item -ItemType Directory -Force -Path $outputDir
-          
-          Write-Host "Running Code Coverage tool..."
-          Write-Host "Tool: $coverageTool"
-          Write-Host "Test executable: .\out\Debug\unit_tests.exe"
-          
-          # Run coverage collection
-          & $coverageTool collect `
-            --output "$outputDir\coverage.cobertura.xml" `
-            --output-format cobertura `
-            --settings "${{ github.workspace }}\.runsettings" `
-            -- ".\out\Debug\unit_tests.exe"
-          
-          # Check if coverage file was created
-          if (Test-Path "$outputDir\coverage.cobertura.xml") {
-            Write-Host "✅ Coverage XML created successfully"
-            Get-Item "$outputDir\coverage.cobertura.xml" | Select-Object Name, Length
-          } else {
-            # Try alternative approach without settings file
-            Write-Host "Retrying without settings file..."
-            & $coverageTool collect `
-              --output "$outputDir\coverage.cobertura.xml" `
-              --output-format cobertura `
-              -- ".\out\Debug\unit_tests.exe"
-            
-            if (Test-Path "$outputDir\coverage.cobertura.xml") {
-              Write-Host "✅ Coverage XML created successfully (retry)"
-            } else {
-              Write-Error "Coverage XML was not created"
-              exit 1
-            }
-          }
+          # 1. Merge raw profile data (essential step)
+          & "C:/Program Files/LLVM/bin/llvm-profdata.exe" merge `
+            -sparse "$BUILD_DIR/unit_tests.profraw" `
+            -o "$BUILD_DIR/unit_tests.profdata"
 
-      ##########################################################################
-      # 1. Convert Cobertura XML -> LCOV Info (Bridge Step)
-      ##########################################################################
-      - name: Convert to LCOV Format
-        if: ${{ matrix.triplet == 'x64-windows' }}
-        shell: pwsh
-        run: |
-          $env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
-          $outputDir = "cmake-build/build/${{ matrix.preset }}"
-          
-          # -filefilters logic:
-          #   - matches exclude
-          #   + matches include (default is include all)
-          #   We exclude paths containing '\vcpkg_installed\' and '\tests\'
-          
-          reportgenerator `
-            "-reports:$outputDir\coverage.cobertura.xml" `
-            "-targetdir:$outputDir" `
-            "-reporttypes:lcov" `
-            "-title:OMath Coverage Report" `
-            "-sourcedirs:${{ github.workspace }}" `
-            "-filefilters:-*\vcpkg_installed\*;-\tests\*"
-          
-          if (Test-Path "$outputDir\lcov.info") {
-            Write-Host "✅ LCOV info file created successfully"
+          # 2. Export to LCOV format
+          #    NOTE: We explicitly ignore vcpkg_installed and system headers
+          & "C:/Program Files/LLVM/bin/llvm-cov.exe" export "$EXE_PATH" `
+            -instr-profile="$BUILD_DIR/unit_tests.profdata" `
+            -format=lcov `
+            -ignore-filename-regex="vcpkg_installed|external|tests" `
+            > "$BUILD_DIR/lcov.info"
+
+          if (Test-Path "$BUILD_DIR/lcov.info") {
+            Write-Host "✅ LCOV info created at $BUILD_DIR/lcov.info"
           } else {
-            Write-Error "LCOV info file was not created"
+            Write-Error "Failed to create LCOV info"
             exit 1
           }
 
-      ##########################################################################
-      # 2. Generate LCOV HTML (genhtml)
-      ##########################################################################
-      - name: Generate HTML Report (genhtml)
+      - name: Install LCOV (for genhtml)
+        if: ${{ matrix.triplet == 'x64-windows' }}
+        run: choco install lcov -y
+
+      - name: Generate HTML Report
         if: ${{ matrix.triplet == 'x64-windows' }}
         shell: bash
         run: |
-          PRESET="${{ matrix.preset }}"
-          BUILD_DIR="cmake-build/build/${PRESET}"
+          BUILD_DIR="cmake-build/build/${{ matrix.preset }}"
           LCOV_INFO="${BUILD_DIR}/lcov.info"
           HTML_DIR="${BUILD_DIR}/coverage-html"
-          
-          if [ ! -f "${LCOV_INFO}" ]; then
-            echo "Error: lcov.info not found at ${LCOV_INFO}"
-            exit 1
-          fi
-          
-          # IMPORTANT: Fix Windows paths. genhtml (Perl) hates backslashes.
-          echo "Sanitizing paths in lcov.info..."
+
+          # Fix paths for genhtml (Perl hates backslashes)
           sed -i 's|\\|/|g' "${LCOV_INFO}"
           
           # Locate genhtml provided by 'choco install lcov'
@@ -372,16 +300,6 @@ jobs:
             --ignore-errors source
             
           echo "✅ LCOV HTML report generated at $HTML_DIR"
-
-      ##########################################################################
-      # 3. Upload Artifacts
-      ##########################################################################
-      - name: Upload Coverage (LCOV Info)
-        if: ${{ matrix.triplet == 'x64-windows' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-info-windows
-          path: cmake-build/build/${{ matrix.preset }}/lcov.info
 
       - name: Upload Coverage (HTML Report)
         if: ${{ matrix.triplet == 'x64-windows' }}

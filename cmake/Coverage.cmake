@@ -31,6 +31,8 @@ function(omath_setup_coverage TARGET_NAME)
     elseif(MSVC)
         # MSVC requires debug info for coverage
         target_compile_options(${TARGET_NAME} PRIVATE
+            /clang:-fprofile-instr-generate
+            /clang:-fcoverage-mapping
             /Zi          # Debug information
             /Od          # Disable optimization
             /Ob0         # Disable inlining
@@ -39,6 +41,7 @@ function(omath_setup_coverage TARGET_NAME)
             /JMC         # Just My Code debugging (improves coverage data)
         )
         target_link_options(${TARGET_NAME} PRIVATE
+            /clang:-fprofile-instr-generate
             /DEBUG:FULL
             /INCREMENTAL:NO
             /PROFILE
