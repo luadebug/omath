@@ -144,7 +144,7 @@ endif()
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND MSVC)
-    target_compile_options(${PROJECT_NAME} PUBLIC "/std:c++23")
+    target_compile_options(${PROJECT_NAME} PUBLIC "-std=c++23")
 endif()
 
 if (OMATH_BUILD_TESTS)
