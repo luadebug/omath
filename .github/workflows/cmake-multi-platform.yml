@@ -774,7 +774,7 @@ jobs:
           sudo apt-get install -y git build-essential cmake ninja-build \
             zip unzip curl pkg-config ca-certificates \
             clang-21 lld-21 libc++-21-dev libc++abi-21-dev \
-            llvm-21 valgrind libxmu-dev libxi-dev libgl-dev
+            llvm-21 valgrind libxmu-dev libxi-dev libgl-dev libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev
           sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang-21 100
           sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-21 100
           sudo update-alternatives --install /usr/bin/lld lld /usr/bin/lld-21 100
