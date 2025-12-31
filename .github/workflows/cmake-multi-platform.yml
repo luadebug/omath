@@ -916,17 +916,24 @@ jobs:
 
           if [[ "${{ matrix.name }}" == "Linux (MSan)" ]]; then
             MSAN_PREFIX="${{ github.workspace }}/llvm-project/msan_out/install"
-            # Flags to use custom libc++
-            CUSTOM_FLAGS="-fsanitize=memory -stdlib=libc++ -L${MSAN_PREFIX}/lib -I${MSAN_PREFIX}/include -I${MSAN_PREFIX}/include/c++/v1"
+            
+            # Compiler flags: Include paths, NO linker paths (avoids unused argument errors)
+            MSAN_CXX_FLAGS="-fsanitize=memory -stdlib=libc++ -I${MSAN_PREFIX}/include -I${MSAN_PREFIX}/include/c++/v1"
+            
+            # Linker flags: Linker paths and libraries
+            MSAN_LINKER_FLAGS="-fsanitize=memory -stdlib=libc++ -L${MSAN_PREFIX}/lib -lc++abi"
             
             # Update the triplet file to include these flags for vcpkg dependencies
-            sed -i "s|-stdlib=libc++|${CUSTOM_FLAGS}|g" cmake/triplets/x64-linux-msan.cmake
+            # 1. Add include paths to -stdlib=libc++ (affects CXX and LINKER flags in triplet)
+            sed -i "s|-stdlib=libc++|-stdlib=libc++ -I${MSAN_PREFIX}/include -I${MSAN_PREFIX}/include/c++/v1|g" cmake/triplets/x64-linux-msan.cmake
+            # 2. Add library path to -lc++abi (affects LINKER flags in triplet)
+            sed -i "s|-lc++abi|-L${MSAN_PREFIX}/lib -lc++abi|g" cmake/triplets/x64-linux-msan.cmake
             
-            # Also pass to CMake for the main project
-            CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=${CUSTOM_FLAGS}")
-            CMAKE_ARGS+=("-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=memory -L${MSAN_PREFIX}/lib -lc++abi")
-            CMAKE_ARGS+=("-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=memory -L${MSAN_PREFIX}/lib -lc++abi")
-            CMAKE_ARGS+=("-DCMAKE_MODULE_LINKER_FLAGS=-fsanitize=memory -L${MSAN_PREFIX}/lib -lc++abi")
+            # Pass to CMake for the main project
+            CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=${MSAN_CXX_FLAGS}")
+            CMAKE_ARGS+=("-DCMAKE_EXE_LINKER_FLAGS=${MSAN_LINKER_FLAGS}")
+            CMAKE_ARGS+=("-DCMAKE_SHARED_LINKER_FLAGS=${MSAN_LINKER_FLAGS}")
+            CMAKE_ARGS+=("-DCMAKE_MODULE_LINKER_FLAGS=${MSAN_LINKER_FLAGS}")
           fi
 
           cmake "${CMAKE_ARGS[@]}"
