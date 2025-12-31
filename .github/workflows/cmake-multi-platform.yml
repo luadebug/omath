@@ -887,6 +887,11 @@ jobs:
                   -DCMAKE_CXX_COMPILER=clang++-21 \
                   -DLLVM_USE_SANITIZER=MemoryWithOrigins \
                   -DLIBCXXABI_USE_LLVM_UNWINDER=OFF \
+                  -DLIBCXX_INCLUDE_BENCHMARKS=OFF \
+                  -DLIBCXX_INCLUDE_DOCS=OFF \
+                  -DLIBCXX_INCLUDE_TESTS=OFF \
+                  -DLIBCXXABI_INCLUDE_TESTS=OFF \
+                  -DLIBUNWIND_INCLUDE_TESTS=OFF \
                   -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/llvm-project/msan_out/install
           cmake --build llvm-project/msan_out --config Release --target install
 
