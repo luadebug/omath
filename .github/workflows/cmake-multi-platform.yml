@@ -940,7 +940,11 @@ jobs:
 
       - name: Build
         shell: bash
-        run: cmake --build cmake-build/build/linux-release-vcpkg --target unit_tests
+        run: |
+          if [[ "${{ matrix.name }}" == "Linux (MSan)" ]]; then
+            export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${{ github.workspace }}/llvm-project/msan_out/install/lib"
+          fi
+          cmake --build cmake-build/build/linux-release-vcpkg --target unit_tests
 
       - name: Run unit_tests with Sanitizer
         shell: bash
