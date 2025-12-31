@@ -875,16 +875,50 @@ jobs:
           cd "$VCPKG_ROOT"
           ./bootstrap-vcpkg.sh
 
+      - name: Build LLVM (libc++, libc++abi) for MSan
+        if: matrix.name == 'Linux (MSan)'
+        shell: bash
+        run: |
+          git clone --depth=1 --branch llvmorg-21.1.8 https://github.com/llvm/llvm-project
+          cmake -G Ninja -S llvm-project/runtimes -B llvm-project/msan_out \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+                  -DCMAKE_C_COMPILER=clang-21 \
+                  -DCMAKE_CXX_COMPILER=clang++-21 \
+                  -DLLVM_USE_SANITIZER=MemoryWithOrigins \
+                  -DLIBCXXABI_USE_LLVM_UNWINDER=OFF \
+                  -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/llvm-project/msan_out/install
+          cmake --build llvm-project/msan_out --config Release --target install
+
       - name: Configure (cmake)
         shell: bash
         run: |
-          cmake --preset linux-release-vcpkg \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            ${{ matrix.sanitizer_flag }} \
-            -DOMATH_BUILD_TESTS=ON \
-            -DVCPKG_MANIFEST_FEATURES="tests" \
-            -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/cmake/triplets" \
-            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+          CMAKE_ARGS=(
+            "--preset" "linux-release-vcpkg"
+            "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+            "${{ matrix.sanitizer_flag }}"
+            "-DOMATH_BUILD_TESTS=ON"
+            "-DVCPKG_MANIFEST_FEATURES=tests"
+            "-DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/cmake/triplets"
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}"
+          )
+
+          if [[ "${{ matrix.name }}" == "Linux (MSan)" ]]; then
+            MSAN_PREFIX="${{ github.workspace }}/llvm-project/msan_out/install"
+            # Flags to use custom libc++
+            CUSTOM_FLAGS="-stdlib=libc++ -L${MSAN_PREFIX}/lib -I${MSAN_PREFIX}/include -I${MSAN_PREFIX}/include/c++/v1"
+            
+            # Update the triplet file to include these flags for vcpkg dependencies
+            sed -i "s|-stdlib=libc++|${CUSTOM_FLAGS}|g" cmake/triplets/x64-linux-msan.cmake
+            
+            # Also pass to CMake for the main project
+            CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=${CUSTOM_FLAGS}")
+            CMAKE_ARGS+=("-DCMAKE_EXE_LINKER_FLAGS=-L${MSAN_PREFIX}/lib -lc++abi")
+            CMAKE_ARGS+=("-DCMAKE_SHARED_LINKER_FLAGS=-L${MSAN_PREFIX}/lib -lc++abi")
+            CMAKE_ARGS+=("-DCMAKE_MODULE_LINKER_FLAGS=-L${MSAN_PREFIX}/lib -lc++abi")
+          fi
+
+          cmake "${CMAKE_ARGS[@]}"
 
       - name: Build
         shell: bash
@@ -898,4 +932,9 @@ jobs:
           export UBSAN_OPTIONS=print_stacktrace=1
           export TSAN_OPTIONS=second_deadlock_stack=1
           export MSAN_OPTIONS=poison_in_free=1
+          
+          if [[ "${{ matrix.name }}" == "Linux (MSan)" ]]; then
+            export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${{ github.workspace }}/llvm-project/msan_out/install/lib"
+          fi
+
           ./out/RelWithDebInfo/unit_tests
