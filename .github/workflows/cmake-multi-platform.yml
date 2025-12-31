@@ -853,10 +853,16 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           sudo add-apt-repository -y "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main"
           sudo apt-get update
-          sudo apt-get install -y git build-essential cmake ninja-build \
-                 zip unzip curl pkg-config ca-certificates \
-                 clang-21 lld-21 libc++-21-dev libc++abi-21-dev \
-                 llvm-21 clang-tidy-21 clang-tools-21
+          
+          # Base packages
+          PKG_LIST="git build-essential cmake ninja-build zip unzip curl pkg-config ca-certificates clang-21 lld-21 llvm-21 clang-tidy-21 clang-tools-21"
+          
+          # Conditionally add libc++ dev packages if NOT MSan
+          if [[ "${{ matrix.name }}" != "Linux (MSan)" ]]; then
+            PKG_LIST="$PKG_LIST libc++-21-dev libc++abi-21-dev"
+          fi
+          
+          sudo apt-get install -y $PKG_LIST
           sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang-21 100
           sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-21 100
           sudo update-alternatives --install /usr/bin/lld lld /usr/bin/lld-21 100
