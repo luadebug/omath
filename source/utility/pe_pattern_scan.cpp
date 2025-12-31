@@ -261,7 +261,7 @@ namespace
 
         const auto nt_headers = get_nt_header_from_file(file, dos_header);
 
-        if (!nt_headers)
+        if (!nt_headers) [[unlikely]]
             return std::nullopt;
 
         if (invalid_nt_header_file(nt_headers.value())) [[unlikely]]
@@ -304,33 +304,58 @@ namespace
 namespace omath
 {
 
-    std::optional<std::uintptr_t> PePatternScanner::scan_for_pattern_in_loaded_module(const void* module_base_address,
-                                                                                      const std::string_view& pattern)
+    std::optional<std::uintptr_t>
+    PePatternScanner::scan_for_pattern_in_loaded_module(const void* module_base_address,
+                                                        const std::string_view& pattern,
+                                                        const std::string_view& target_section_name)
     {
         const auto base_address = reinterpret_cast<std::uintptr_t>(module_base_address);
+        const auto* base_bytes = static_cast<const std::byte*>(module_base_address);
 
         if (!base_address)
             return std::nullopt;
 
-        auto nt_header_variant = get_nt_header_from_loaded_module(module_base_address);
+        const auto* dos_header = static_cast<const DosHeader*>(module_base_address);
 
-        if (!nt_header_variant)
+        if (invalid_dos_header_file(*dos_header)) [[unlikely]]
+            return std::nullopt;
+
+        const auto nt_header_variant = get_nt_header_from_loaded_module(module_base_address);
+
+        if (!nt_header_variant) [[unlikely]]
             return std::nullopt;
 
         return std::visit(
-                [base_address, &pattern](const auto& nt_header) -> std::optional<std::uintptr_t>
+                [base_bytes, base_address, lfanew = dos_header->e_lfanew, &target_section_name,
+                 &pattern](const auto& nt_header) -> std::optional<std::uintptr_t>
                 {
-                    // Define .text segment as scan area
-                    const auto start = nt_header.optional_header.base_of_code;
-                    const auto scan_size = nt_header.optional_header.size_code;
+                    constexpr std::size_t signature_size = sizeof(nt_header.signature);
+                    const auto section_table_off = static_cast<std::size_t>(lfanew) + signature_size
+                                                   + sizeof(FileHeader) + nt_header.file_header.size_optional_header;
 
-                    const auto scan_range = std::span{reinterpret_cast<std::byte*>(base_address) + start, scan_size};
+                    const auto* section_table = reinterpret_cast<const SectionHeader*>(base_bytes + section_table_off);
 
-                    // ReSharper disable once CppTooWideScopeInitStatement
-                    const auto result = PatternScanner::scan_for_pattern(scan_range, pattern);
+                    for (std::size_t i = 0; i < nt_header.file_header.num_sections; ++i)
+                    {
+                        const auto* section = section_table + i;
 
-                    if (result != scan_range.end())
-                        return reinterpret_cast<std::uintptr_t>(&*result);
+                        if (std::string_view{section->name} != target_section_name || section->size_raw_data == 0)
+                            continue;
+
+                        const auto section_size = section->virtual_size != 0
+                                                          ? static_cast<std::size_t>(section->virtual_size)
+                                                          : static_cast<std::size_t>(section->size_raw_data);
+
+                        const auto* section_begin =
+                                reinterpret_cast<std::byte*>(base_address + section->virtual_address);
+                        const auto scan_range = std::span{section_begin, section_size};
+
+                        const auto result =
+                                PatternScanner::scan_for_pattern(scan_range.begin(), scan_range.end(), pattern);
+
+                        if (result != scan_range.end())
+                            return reinterpret_cast<std::uintptr_t>(&*result);
+                    }
 
                     return std::nullopt;
                 },
@@ -343,7 +368,7 @@ namespace omath
     {
         const auto pe_section = extract_section_from_pe_file(path_to_file, target_section_name);
 
-        if (!pe_section.has_value())
+        if (!pe_section.has_value()) [[unlikely]]
             return std::nullopt;
 
         const auto scan_result =
