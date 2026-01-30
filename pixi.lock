@@ -102,6 +102,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ninja-1.13.2-h171cf75_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.1-h35e630c_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pixman-cos7-x86_64-0.34.0-ha675448_1106.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pthread-stubs-0.4-hb9d3cd8_1002.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pulseaudio-client-17.0-h9a6aba3_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.14.2-h32b2ec7_101_cp314.conda
@@ -129,6 +130,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/xorg-libxrender-0.9.12-hb9d3cd8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/xorg-libxscrnsaver-1.2.4-hb9d3cd8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/xorg-libxtst-1.2.5-hb9d3cd8_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/xorg-x11-server-common-cos7-x86_64-1.20.4-ha675448_1106.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/noarch/xorg-x11-server-xvfb-cos7-x86_64-1.20.4-ha675448_1106.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/linux-64/xxhash-0.8.3-hb47aa4a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/yaml-0.2.5-h280c20c_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
@@ -4220,6 +4223,15 @@ packages:
   license_family: BSD
   size: 850231
   timestamp: 1763655726735
+- conda: https://conda.anaconda.org/conda-forge/noarch/pixman-cos7-x86_64-0.34.0-ha675448_1106.tar.bz2
+  sha256: 00b5e12f5687af678294d93ddc73501d502e4d8b064a481695efd0dbf64c3b12
+  md5: 03b6232b69db4edb12a97fb2ab3d671c
+  depends:
+  - sysroot_linux-64 2.17.*
+  license: MIT
+  license_family: MIT
+  size: 279859
+  timestamp: 1726575398190
 - conda: https://conda.anaconda.org/conda-forge/linux-64/pthread-stubs-0.4-hb9d3cd8_1002.conda
   sha256: 9c88f8c64590e9567c6c80823f0328e58d3b1efb0e1c539c0315ceca764e0973
   md5: b3c17d95b5a10c6e64a21fa17573e70e
@@ -5180,6 +5192,26 @@ packages:
   license_family: MIT
   size: 33786
   timestamp: 1727964907993
+- conda: https://conda.anaconda.org/conda-forge/noarch/xorg-x11-server-common-cos7-x86_64-1.20.4-ha675448_1106.tar.bz2
+  sha256: 403a277188dc1bb0b16b14c73aebb828bd50b59b3858ce3a1853e8418fcbdab5
+  md5: 93da9aa4fe4d3f4c5c6cdc60462f073d
+  depends:
+  - pixman-cos7-x86_64 >=0.30.0 *_1106
+  - sysroot_linux-64 2.17.*
+  license: MIT
+  license_family: MIT
+  size: 37140
+  timestamp: 1726581553412
+- conda: https://conda.anaconda.org/conda-forge/noarch/xorg-x11-server-xvfb-cos7-x86_64-1.20.4-ha675448_1106.tar.bz2
+  sha256: b0739ac2c653c907e5a9d425740d2deadb11410e080c19a550324a0d2b77cb4c
+  md5: 1c9985ace5b32f9f2274ca169d1a4e64
+  depends:
+  - sysroot_linux-64 2.17.*
+  - xorg-x11-server-common-cos7-x86_64 >=1.20.4 *_1106
+  license: MIT and GPLv2
+  license_family: GPL2
+  size: 921108
+  timestamp: 1726584648790
 - conda: https://conda.anaconda.org/conda-forge/linux-64/xxhash-0.8.3-hb47aa4a_0.conda
   sha256: 08e12f140b1af540a6de03dd49173c0e5ae4ebc563cabdd35ead0679835baf6f
   md5: 607e13a8caac17f9a664bcab5302ce06
